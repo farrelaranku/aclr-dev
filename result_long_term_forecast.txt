@@ -1,0 +1,47 @@
+TEST : weather_96_96_noACLR_B6iFast_custom_ftM_sl96_ll48_pl96_dm512_el2_dl1_train
+test 10444
+mse:0.17342889308929443, mae:0.2120385617017746
+
+TEST : weather_96_96_ACLR_B6iFast_custom_ftM_sl96_ll48_pl96_dm512_el2_dl1_train
+test 10444
+mse:0.18770304322242737, mae:0.22783756256103516
+
+weather_96-96_iTransformer_custom_ftM_sl96_ll48_pl96_dm128_nh8_el2_dl1_df128_fc1_ebtimeF_dtTrue_normal_0_0<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+test 10444
+mse:0.2071363776922226, mae:0.2591192424297333
+
+weather_96_96_iTransformer_custom_ftM_sl96_ll48_pl96_dm512_nh8_el2_dl1_df2048_fc3_ebtimeF_dtTrue_train_0<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+test 10444
+mse:0.17546260356903076, mae:0.21616381406784058
+
+weather_96_96_Transformer_custom_ftM_sl96_ll48_pl96_dm512_nh8_el2_dl1_df2048_fc3_ebtimeF_dtTrue_Exp_0<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+test 10444
+mse:0.40311166644096375, mae:0.44442787766456604
+
+weather_96_96_Autoformer_custom_ftM_sl96_ll48_pl96_dm512_nh8_el2_dl1_df2048_fc3_ebtimeF_dtTrue_Exp_0<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+test 10444
+mse:0.2724684774875641, mae:0.3463243544101715
+
+weather_96_96_Informer_custom_ftM_sl96_ll48_pl96_dm512_nh8_el2_dl1_df2048_fc3_ebtimeF_dtTrue_Exp_0<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+test 10444
+mse:0.38252702355384827, mae:0.4335661828517914
+
+weather_96_96_Reformer_custom_ftM_sl96_ll48_pl96_dm512_nh8_el2_dl1_df2048_fc3_ebtimeF_dtTrue_Exp_0<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+test 10444
+mse:0.3393861651420593, mae:0.37647244334220886
+
+
+
+
+==========================EXCHANGE===========================
+
+
+
+TEST 512 batch : exca_96_96_noACLR_B6iFast_custom_ftM_sl96_ll48_pl96_dm512_el2_dl1_Exp
+test 1422
+mse:0.09316509962081909, mae:0.21520906686782837
+
+
+TEST 512 : exca_96_96_withACLR_B6iFast_custom_ftM_sl96_ll48_pl96_dm512_el2_dl1_Exp
+test 1422
+mse:0.0854220762848854, mae:0.2061471939086914

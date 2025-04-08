@@ -1,0 +1,11 @@
+pandas
+scikit-learn
+sktime
+# torchvision==0.14.1
+numpy
+matplotlib
+reformer_pytorch
+tqdm
+stable-baselines3[extra]
+gymnasium
+gym
