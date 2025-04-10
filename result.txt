@@ -151,3 +151,12 @@ mse:0.15436787903308868, mae:0.2676685154438019
 ettm2_96_192_ori_Transformer_custom_ftM_sl96_ll48_pl192_dm512_nh8_el3_dl1_df2048_fc3_ebtimeF_dtTrue_Exp_0  
 mse:0.1753263622522354, mae:0.2885669469833374
 
+ettm2_96_336_ori_Informer_custom_ftM_sl96_ll48_pl336_dm512_nh8_el3_dl1_df2048_fc3_ebtimeF_dtTrue_Exp_0  
+mse:0.26086628437042236, mae:0.3645065426826477
+
+ettm2_96_336_ori_iTransformer_custom_ftM_sl96_ll48_pl336_dm512_nh8_el3_dl1_df2048_fc3_ebtimeF_dtTrue_Exp_0  
+mse:0.1914842426776886, mae:0.2986164093017578
+
+ettm2_96_336_ori_Transformer_custom_ftM_sl96_ll48_pl336_dm512_nh8_el3_dl1_df2048_fc3_ebtimeF_dtTrue_Exp_0  
+mse:0.24845725297927856, mae:0.35398000478744507
+
