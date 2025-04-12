@@ -160,3 +160,45 @@ mse:0.1914842426776886, mae:0.2986164093017578
 ettm2_96_336_ori_Transformer_custom_ftM_sl96_ll48_pl336_dm512_nh8_el3_dl1_df2048_fc3_ebtimeF_dtTrue_Exp_0  
 mse:0.24845725297927856, mae:0.35398000478744507
 
+new_weather_96_96_withACLR_b128_B6iFast_custom_ftM_sl96_ll48_pl96_dm512_el3_dl1_Exp  
+mse:0.20985883474349976, mae:0.2529866695404053
+
+new_weather_96_96_noACLR_b128_B6iFast_custom_ftM_sl96_ll48_pl96_dm512_el3_dl1_Exp  
+mse:0.1810082048177719, mae:0.22140885889530182
+
+new_weather_96_96_withACLR_b128_B6iFast_custom_ftM_sl96_ll48_pl96_dm512_el3_dl1_Exp  
+mse:0.17746788263320923, mae:0.21732187271118164
+
+new_weather_96_192_withACLR_b128_B6iFast_custom_ftM_sl96_ll48_pl192_dm512_el2_dl1_Exp  
+mse:0.22533565759658813, mae:0.2591421902179718
+
+new_weather_96_336_withACLR_b128_B6iFast_custom_ftM_sl96_ll48_pl336_dm512_el2_dl1_Exp  
+mse:0.2843615710735321, mae:0.3018982410430908
+
+_new_weather_96_720_withACLR_b128_B6iFast_custom_ftM_sl96_ll48_pl720_dm512_el2_dl1_Exp  
+mse:0.358894020318985, mae:0.3499211072921753
+
+new_exca_96_96_withACLR_b512_B6iFast_custom_ftM_sl96_ll48_pl96_dm512_el2_dl1_Exp  
+mse:0.09009300917387009, mae:0.21189992129802704
+
+new_exca_96_192_withACLR_b512_B6iFast_custom_ftM_sl96_ll48_pl192_dm512_el2_dl1_Exp  
+mse:0.1791321337223053, mae:0.3012086749076843
+
+new_exca_96_336_withACLR_b512_B6iFast_custom_ftM_sl96_ll48_pl336_dm512_el2_dl1_Exp  
+mse:0.32911351323127747, mae:0.4151824712753296
+
+new_exca_96_720_withACLR_b512_B6iFast_custom_ftM_sl96_ll48_pl720_dm512_el2_dl1_Exp  
+mse:0.8472554087638855, mae:0.6949521899223328
+
+new_ETTm2_96_96_withACLR_b512_B6iFast_custom_ftM_sl96_ll48_pl96_dm512_el2_dl1_Exp  
+mse:0.12456817179918289, mae:0.23758825659751892
+
+new_ETTm2_96_192_withACLR_b512_B6iFast_custom_ftM_sl96_ll48_pl192_dm512_el2_dl1_Exp  
+mse:0.15347455441951752, mae:0.2670477628707886
+
+new_ETTm2_96_336_withACLR_b512_B6iFast_custom_ftM_sl96_ll48_pl336_dm512_el2_dl1_Exp  
+mse:0.1890442818403244, mae:0.29662224650382996
+
+new_ETTm2_96_720_withACLR_b512_B6iFast_custom_ftM_sl96_ll48_pl720_dm512_el2_dl1_Exp  
+mse:0.24614228308200836, mae:0.3408529460430145
+

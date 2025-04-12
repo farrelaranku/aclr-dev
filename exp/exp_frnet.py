@@ -1,10 +1,10 @@
 from data_provider.data_factory import data_provider
 from exp.exp_basic import Exp_Basic
 from models import Informer, Autoformer, AutoformerS1, Bautoformer, B2autoformer, B3autoformer, B4autoformer, B5autoformer, B6autoformer, B7autoformer, iTransformer, B6iFast, S1iSlow 
-from models import Uautoformer, UautoformerC1, UautoformerC2, Uautoformer2, Transformer, Reformer, Mantra, MantraV1, MantraA, MantraB, MantraD, MantraE
-from utils.tools import EarlyStopping, adjust_learning_rate, visual, adjust_aclr
+from models import Uautoformer, UautoformerC1, UautoformerC2, Uautoformer2, Transformer, Reformer, Mantra, MantraV1, MantraA, MantraB, MantraD, MantraE, FRNet
+from utils.tools import EarlyStopping, adjust_learning_rate, visual
 from utils.metrics import metric, NegativeCorr
-from utils.slowloss import SlowLearnerLoss, ssl_loss, ssl_loss_v2
+from utils.slowloss import SlowLearnerLoss, ssl_loss, ssl_loss_v2, CORR, BarlowTwins
 
 from utils.tools import visual
 
@@ -28,9 +28,10 @@ from sktime.performance_metrics.forecasting import \
 
 warnings.filterwarnings('ignore')
 
-class Exp_Main_DualmodE3K(Exp_Basic):
+class Exp_Main_DualmodE3K_FRnet(Exp_Basic):
     def __init__(self, args):
-        super(Exp_Main_DualmodE3K, self).__init__(args)
+        super(Exp_Main_DualmodE3K_FRnet, self).__init__(args)
+        ssl_loss = SlowLearnerLoss()
 
     def _build_model(self):
         model_dict = {
@@ -59,6 +60,10 @@ class Exp_Main_DualmodE3K(Exp_Basic):
             'iTransformer' : iTransformer,
             'B6iFast' : B6iFast,
             'S1iSlow' : S1iSlow,
+            'FRNet' : FRNet
+            # 'Autoformer2': Autoformer2,
+            # 'PatchTST': PatchTST
+            # 'FRNet' : FRNet
         }
         model = model_dict[self.args.model].Model(self.args).float()
         self.slow_model = model_dict[self.args.slow_model].Model(self.args).float().to(self.device)
@@ -115,34 +120,39 @@ class Exp_Main_DualmodE3K(Exp_Basic):
                 # decoder input
                 dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
                 dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
+
                 # encoder - decoder
                 if self.args.use_amp:
                     with torch.cuda.amp.autocast():
+                        if 'B6iFast' or 'FRNet' or 'TST' in self.args.model:
+                            outputs = self.model(batch_x)
+                        else:
+                            if self.args.output_attention:
+                                # Outputs for every models
+                                outputs, attns, arr_outputs, arr_attns = self.model.forward(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                            else:
+                                # Outputs for every models
+                                outputs, arr_outputs = self.model.forward(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                else:
+                    if 'B6iFast' or 'FRNet' or 'TST' in self.args.model:
+                        outputs = self.model(batch_x)
+                    else:
                         if self.args.output_attention:
                             # Outputs for every models
                             outputs, attns, arr_outputs, arr_attns = self.model.forward(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                         else:
                             # Outputs for every models
                             outputs, arr_outputs = self.model.forward(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-                else:
-                    if self.args.output_attention:
-                        # Outputs for every models
-                        outputs, attns, arr_outputs, arr_attns = self.model.forward(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-                    else:
-                        # Outputs for every models
-                        outputs, arr_outputs = self.model.forward(batch_x, batch_x_mark, dec_inp, batch_y_mark)
 
                 outputs = outputs[:, -self.args.pred_len:, f_dim:]
                 batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
-
                 pred = outputs.detach().cpu()
                 true = batch_y.detach().cpu()
-
                 loss = criterion(pred, true)
-
+                # print("Loss: ", loss)
                 total_loss.append(loss)
 
-        total_loss = np.average(total_loss)
+        total_loss = np.nanmean(total_loss)
         self.model.train()
         return total_loss
 
@@ -165,10 +175,12 @@ class Exp_Main_DualmodE3K(Exp_Basic):
         time_now = time.time()
 
         train_steps = len(train_loader)
-        print("train : ", len(train_loader))
-        print("vali : ", len(vali_loader))
-        print("test : ", len(test_loader))
-        print("Train Steps: ", train_steps)
+
+        early_stopping = EarlyStopping(patience=self.args.patience, verbose=True)
+
+        model_optim = self._select_optimizer()
+        slow_model_optim = self._select_slow_optimizer()
+        criterion = self._select_criterion()
 
         var_adapt_clr = {
             'min_lr': self.args.learning_rate / 10,
@@ -177,16 +189,21 @@ class Exp_Main_DualmodE3K(Exp_Basic):
             'adaptive_treshold': 0.95,
             'prev_loss': 999999
         }
-        early_stopping = EarlyStopping(patience=self.args.patience, verbose=True)
-
-        model_optim = self._select_optimizer()
-        slow_model_optim = self._select_slow_optimizer()
-        criterion = self._select_criterion()
 
         last_params = self.model.state_dict()
 
         if self.args.use_amp:
             scaler = torch.cuda.amp.GradScaler()
+
+        if(self.args.use_slow_learner):
+            print('Using Slow Learner')
+        else:
+            print('Without slow learner')
+        
+        if(self.args.use_bt):
+            print('slow using barlow twins')
+        else:
+            print('slow using CRL')
 
         for epoch in range(self.args.train_epochs):
             iter_count = 0
@@ -215,31 +232,40 @@ class Exp_Main_DualmodE3K(Exp_Basic):
                 if self.args.use_amp:
                     with torch.cuda.amp.autocast():
                         # print("enter with cuda amp")
-                        if self.args.output_attention:
-                            # Outputs for every models
-                            outputs, attns, arr_outputs, arr_attns = self.model.forward(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-
+                        if 'B6iFast' or 'FRNet' or 'TST' in self.args.model:
+                            outputs = self.model(batch_x)
                         else:
-                            # Outputs for every models
-                            outputs, arr_outputs = self.model.forward(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                            if self.args.output_attention:
+                                # Outputs for every models
+                                outputs, attns, arr_outputs, arr_attns = self.model.forward(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+
+                            else:
+                                # Outputs for every models
+                                outputs, arr_outputs = self.model.forward(batch_x, batch_x_mark, dec_inp, batch_y_mark)
 
                         outputs = outputs[:, -self.args.pred_len:, f_dim:]
                         batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
                         loss = criterion(outputs, batch_y)
                         train_loss.append(loss.item())
                 else:
+                    if 'B6iFast' or 'FRNet' or 'TST' in self.args.model:
+                        outputs = self.model(batch_x)
                     # print("enter without cuda amp")
-                    if self.args.output_attention:
-                        # Outputs for every models
-                        outputs, attns, arr_outputs, arr_attns = self.model.forward(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-                    else:
-                        # Outputs for every models
-                        outputs, arr_outputs = self.model.forward(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                    else: 
+                        if self.args.output_attention:
+                            # Outputs for every models
+                            outputs, attns, arr_outputs, arr_attns = self.model.forward(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                        else:
+                            # Outputs for every models
+                            outputs, arr_outputs = self.model.forward(batch_x, batch_x_mark, dec_inp, batch_y_mark)
 
                     outputs = outputs[:, -self.args.pred_len:, f_dim:]
                     batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
                     loss = criterion(outputs, batch_y)
+                    # print('iter: ', i+1, ' loss: ', loss)
                     train_loss.append(loss.item())
+                
+                # print("iter:", i, "\t\tLoss Fast: ", loss.item())
 
                 need_update = True
                 if (i + 1) % 100 == 0:
@@ -249,10 +275,7 @@ class Exp_Main_DualmodE3K(Exp_Basic):
                     print('\tspeed: {:.4f}s/iter; left time: {:.4f}s'.format(speed, left_time))
                     iter_count = 0
                     time_now = time.time()
-                    if self.args.use_aclr == True:
-                        # print("Using ACLR now")
-                        adjust_aclr(model_optim, loss.item(), i, var_adapt_clr)
-                        var_adapt_clr['prev_loss'] = loss.item()
+
                     if (loss.item() > self.args.anomaly):
                         need_update = False
                         if i > 0:
@@ -296,6 +319,11 @@ class Exp_Main_DualmodE3K(Exp_Basic):
                     batch_x_slow = torch.clone(batch_x)
                     batch_x_slow = batch_x_slow * (m_ones-slow_mark)
                     
+                    if(self.args.use_bt):
+                        noise = torch.randn_like(batch_x) * 0.1  # Noise kecil
+                        batch_x_slow2 = batch_x + noise
+                        
+                    
                     # decoder input
                     if self.args.seq_len < self.args.pred_len:
                         dec_inp = torch.zeros_like(batch_y[:, -self.args.seq_len:, :]).float()
@@ -315,18 +343,29 @@ class Exp_Main_DualmodE3K(Exp_Basic):
                     if self.args.output_attention:
                         slow_out = self.slow_model.forward(batch_x_slow, batch_x_mark, dec_inp, batch_y_mark[:,:dec_inp.shape[1],:])[0]
                     else:
-                        slow_out = self.slow_model.forward(batch_x_slow, batch_x_mark, dec_inp, batch_y_mark[:,:dec_inp.shape[1],:])
+                        if(self.args.use_bt):
+                            slow_out = self.slow_model.forward(batch_x_slow, batch_x_mark, dec_inp, batch_y_mark[:,:dec_inp.shape[1],:])
+                            slow_out2 = self.slow_model.forward(batch_x_slow2, batch_x_mark, dec_inp, batch_y_mark[:,:dec_inp.shape[1],:])
+                        else:
+                            slow_out = self.slow_model.forward(batch_x_slow, batch_x_mark, dec_inp, batch_y_mark[:,:dec_inp.shape[1],:])
+                    # else:
+                    #     slow_out = self.slow_model.forward(batch_x_slow)
 
+                    
 
                     # compute slow loss
                     f_dim = -1 if self.args.features == 'MS' else 0
                     outputs = slow_out[:, -self.args.pred_len:, f_dim:]
                     batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
-                    loss += ssl_loss_v2(slow_out, batch_x, slow_mark, s1, s2)
-                    if self.args.use_aclr == True:
-                        # print("Using ACLR now")
-                        adjust_aclr(model_optim, loss.item(), i, var_adapt_clr)
-                        var_adapt_clr['prev_loss'] = loss.item()
+                    batch_x = batch_x[:, -self.args.pred_len:, f_dim:].to(self.device)
+
+                    if(self.args.use_bt):
+                        loss += BarlowTwins(slow_out, slow_out2)
+                    else:
+                        loss += ssl_loss_v2(slow_out, batch_x, slow_mark, s1, s2)
+                    
+                    # loss += criterion(outputs, batch_y)
+
 
                     if(need_update):
                         slow_model_optim.zero_grad()
@@ -339,10 +378,14 @@ class Exp_Main_DualmodE3K(Exp_Basic):
                             loss.backward()
                             slow_model_optim.step()
                             model_optim.step()
+            
 
             print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
-            train_loss = np.average(train_loss)
+            # train_loss = np.average(train_loss)
+            train_loss = np.nanmean(train_loss)
+            print("============================= VALIDATION LOSS ===============================")
             vali_loss = self.vali(vali_data, vali_loader, criterion, setting, "vali")
+            print("================================ TEST LOSS ==================================")
             test_loss = self.vali(test_data, test_loader, criterion, setting, "test")
 
             print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4:.7f}".format(
@@ -353,20 +396,74 @@ class Exp_Main_DualmodE3K(Exp_Basic):
                 f.write(
                     "Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4:.7f}\n\n".format(
                         epoch + 1, train_steps, train_loss, vali_loss, test_loss))
-            # if self.args.use_aclr == True:
-            #     print("Using ACLR now")
-            #     adjust_aclr(model_optim, loss.item(), i, var_adapt_clr)
-            # elif self.args.use_aclr == False:
-                # adjust_learning_rate(model_optim, epoch + 1, self.args)
-            # var_adapt_clr['prev_loss'] = loss.item()
-                # print semua var_adapt_clr dalam bentuk {}
-            print("\nprev_loss: ", var_adapt_clr['prev_loss'], "\nstep_size: ", var_adapt_clr['step_size'], "\n")
+            
+            preds = []
+            trues = []
+            self.model.eval()
+            isFirst = True    
+            
+            for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(test_loader):
+                batch_x = batch_x.float().to(self.device)
+                batch_y = batch_y.float().to(self.device)
+
+                batch_x_mark = batch_x_mark.float().to(self.device)
+                batch_y_mark = batch_y_mark.float().to(self.device)
+
+                # decoder input
+                dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
+                dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
+
+                f_dim = -1 if self.args.features == 'MS' else 0
+                
+                # encoder - decoder
+                if self.args.use_amp:
+                    with torch.cuda.amp.autocast():
+                        if 'B6iFast' or 'FRNet' or 'TST' in self.args.model:
+                            outputs = self.model(batch_x)
+                        else:
+                            if self.args.output_attention:
+                                outputs, attns, _, _ = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                            else:
+                                outputs, _ = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                else:
+                    if 'B6iFast' or 'FRNet' or 'TST' in self.args.model:
+                        outputs = self.model(batch_x)
+                    else:
+                        if self.args.output_attention:
+                            outputs, attns, _, _ = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+
+                        else:
+                            outputs, _ = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+
+                outputs = outputs[:, -self.args.pred_len:, f_dim:]
+                batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
+                outputs = outputs.detach().cpu().numpy()
+                batch_y = batch_y.detach().cpu().numpy()
+
+                pred = outputs  # outputs.detach().cpu().numpy()  # .squeeze()
+                true = batch_y  # batch_y.detach().cpu().numpy()  # .squeeze()
+
+                if isFirst:
+                    isFirst = False
+                    preds = np.array(pred)
+                    trues = np.array(true)
+
+                else:
+                    preds = np.concatenate((preds,pred), axis=0)
+                    trues = np.concatenate((trues,true), axis=0)
+                
+
+            mae, mse, rmse, mape, mspe = metric(preds, trues)
+            print('mse:{}, mae:{}'.format(mse, mae))
+
             
             if early_stopping.early_stop:
                 print("Early stopping")
                 break
-           
-            # adjust_learning_rate(model_optim, epoch + 1, self.args)
+            
+            
+            adjust_learning_rate(model_optim, epoch + 1, self.args)
+
 
         best_model_path = path + '/' + 'checkpoint.pth'
         self.model.load_state_dict(torch.load(best_model_path))
@@ -404,16 +501,22 @@ class Exp_Main_DualmodE3K(Exp_Basic):
                 # encoder - decoder
                 if self.args.use_amp:
                     with torch.cuda.amp.autocast():
+                        if 'B6iFast' or 'FRNet' or 'TST' in self.args.model:
+                            outputs = self.model(batch_x)
+                        else:
+                            if self.args.output_attention:
+                                outputs, attns, _, _ = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                            else:
+                                outputs, _ = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                else:
+                    if 'B6iFast' or 'FRNet' or 'TST' in self.args.model:
+                        outputs = self.model(batch_x)
+                    else:
                         if self.args.output_attention:
                             outputs, attns, _, _ = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+
                         else:
                             outputs, _ = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-                else:
-                    if self.args.output_attention:
-                        outputs, attns, _, _ = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-
-                    else:
-                        outputs, _ = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
 
                 outputs = outputs[:, -self.args.pred_len:, f_dim:]
                 batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
@@ -467,7 +570,7 @@ class Exp_Main_DualmodE3K(Exp_Basic):
         # result save
         result_path = './checkpoints/' + setting + '/testing_results/'
 
-        # print('test shape:', preds.shape, trues.shape)
+        print('test shape:', preds.shape, trues.shape)
         mae, mse, rmse, mape, mspe = metric(preds, trues)
         print('mse:{}, mae:{}'.format(mse, mae))
         with open(result_path + 'result_mantra.txt', 'a') as f:
@@ -475,13 +578,6 @@ class Exp_Main_DualmodE3K(Exp_Basic):
             f.write('mse:{}, mae:{}'.format(mse, mae))
             f.write('\n')
             f.write('\n')
-
-        f = open("result.txt", 'a')
-        f.write(setting + "  \n")
-        f.write('mse:{}, mae:{}'.format(mse, mae))
-        f.write('\n')
-        f.write('\n')
-        f.close()
 
         with open(folder_path + 'metrics.npy', 'wb') as f:
             np.save(f, np.array([mae, mse, rmse, mape, mspe]))
@@ -629,15 +725,21 @@ class Exp_Main_DualmodE3K(Exp_Basic):
                 # encoder - decoder
                 if self.args.use_amp:
                     with torch.cuda.amp.autocast():
+                        if 'B6iFast' or 'FRNet' or 'TST' in self.args.model:
+                            outputs = self.model(batch_x)
+                        else:
+                            if self.args.output_attention:
+                                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
+                            else:
+                                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                else:
+                    if 'B6iFast' or 'FRNet' or 'TST' in self.args.model:
+                        outputs = self.model(batch_x)
+                    else:
                         if self.args.output_attention:
                             outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
                         else:
                             outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-                else:
-                    if self.args.output_attention:
-                        outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
-                    else:
-                        outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 pred = outputs.detach().cpu().numpy()  # .squeeze()
                 preds.append(pred)
 

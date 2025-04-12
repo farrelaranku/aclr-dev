@@ -103,6 +103,24 @@ def ssl_loss_v3(gx, x, mask, S, D):
 
     return (maxS1/minS1) * ((lamb*Lm)+((1-lamb)*Lum))
 
+def BarlowTwins(z1, z2,lambda_param=0.5):
+    N, D = z1.shape[0], z1.shape[1] * z1.shape[2]  # Flatten time and feature dimensions
+    z1_flat = z1.reshape(N, -1)  # Shape: [batch_size, seq_len * features]
+    z2_flat = z2.reshape(N, -1)
+    
+        # Normalisasi fitur
+    z1_norm = (z1_flat - z1_flat.mean(dim=0)) / (z1_flat.std(dim=0) + 1e-6)
+    z2_norm = (z2_flat - z2_flat.mean(dim=0)) / (z2_flat.std(dim=0) + 1e-6)
+        
+        # Hitung cross-correlation matrix
+    C = torch.matmul(z1_norm.T, z2_norm) / N  # Shape: [D, D]
+        
+        # Hitung loss
+    on_diag = (1 - C.diagonal()).pow(2).sum()
+    off_diag = C.pow(2).sum() - C.diagonal().pow(2).sum()
+    loss = on_diag + lambda_param * off_diag
+    return loss
+
 
 def CORR(pred, true):
     u = ((true - true.mean(0)) * (pred - pred.mean(0))).sum(0)
